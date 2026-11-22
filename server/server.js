@@ -1,7 +1,7 @@
 const express = require('express')
 const multer = require('multer')
 const path = require('path')
-require('dotenv').config()
+require('dotenv').config({ override: true })
 
 const { parseAndClean } = require('./src/cleaning')
 const { analyzeReviews } = require('./src/analyzer')
@@ -32,6 +32,7 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
     const analyzedRows = await analyzeReviews(cleanedRows)
     const enrichedRows = analyzedRows.map(row => ({ ...row, isMismatch: isMismatch(row) }))
     const stats = computeStats(analyzedRows)
+    stats.metrics = analyzedRows.metrics
     res.json({ rows: enrichedRows, stats })
   } catch (err) {
     res.status(500).json({ error: 'Analysis failed. Please try again.' })

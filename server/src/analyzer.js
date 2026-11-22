@@ -4,8 +4,8 @@ const { getCached, setCached } = require('./cache')
 const { withBackoff } = require('./backoff')
 const { callGemini } = require('./llmClient')
 
-const BATCH_SIZE = 5
-const DEFAULT_BATCH_DELAY_MS = 4000
+const BATCH_SIZE = 15
+const DEFAULT_BATCH_DELAY_MS = 500
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -29,6 +29,15 @@ async function callBatch(reviews, llmFn) {
 }
 
 async function analyzeReviews(cleanedRows, llmFn = callGemini, batchDelayMs = DEFAULT_BATCH_DELAY_MS) {
+  const startTime = Date.now()
+  let aiCalls = 0
+  let cachedReviews = 0
+
+  const trackedLlmFn = async (sys, usr) => {
+    aiCalls++
+    return llmFn(sys, usr)
+  }
+
   const inMemoryCache = {}
   const failedHashes = new Set()
 
@@ -38,6 +47,7 @@ async function analyzeReviews(cleanedRows, llmFn = callGemini, batchDelayMs = DE
     const cached = getCached(row.hash)
     if (cached) {
       inMemoryCache[row.hash] = cached
+      cachedReviews++
     } else {
       toAnalyze.push(row)
     }
@@ -45,7 +55,7 @@ async function analyzeReviews(cleanedRows, llmFn = callGemini, batchDelayMs = DE
 
   for (let i = 0; i < toAnalyze.length; i += BATCH_SIZE) {
     const batch = toAnalyze.slice(i, i + BATCH_SIZE)
-    let batchResults = await callBatch(batch, llmFn)
+    let batchResults = await callBatch(batch, trackedLlmFn)
 
     const failed = batch.filter(row => {
       const found = batchResults.find(r => r.id === row.id)
@@ -53,7 +63,7 @@ async function analyzeReviews(cleanedRows, llmFn = callGemini, batchDelayMs = DE
     })
 
     if (failed.length > 0) {
-      const retryResults = await callBatch(failed, llmFn)
+      const retryResults = await callBatch(failed, trackedLlmFn)
       batchResults = [...batchResults, ...retryResults]
     }
 
@@ -72,13 +82,21 @@ async function analyzeReviews(cleanedRows, llmFn = callGemini, batchDelayMs = DE
     }
   }
 
-  return cleanedRows.map(row => {
+  const finalRows = cleanedRows.map(row => {
     if (row.status !== 'ok') return { ...row, result: null }
     const result = inMemoryCache[row.hash] || getCached(row.hash)
     if (result) return { ...row, result }
     if (failedHashes.has(row.hash)) return { ...row, status: 'analysis_failed', result: null }
     return { ...row, result: null }
   })
+
+  finalRows.metrics = {
+    aiCalls,
+    cachedReviews,
+    durationMs: Date.now() - startTime
+  }
+
+  return finalRows
 }
 
 module.exports = { analyzeReviews }

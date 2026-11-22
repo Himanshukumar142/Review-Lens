@@ -6,12 +6,16 @@ import SummaryCards from './components/SummaryCards'
 import TopLists from './components/TopLists'
 import Filters from './components/Filters'
 import ReviewTable from './components/ReviewTable'
+import ReplyBox from './components/ReplyBox'
 
 export default function App() {
   const [rows, setRows] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [reply, setReply] = useState(null)
+  const [replyLoading, setReplyLoading] = useState(false)
+  const [replyError, setReplyError] = useState(null)
   const [filterProduct, setFilterProduct] = useState('all')
   const [filterSentiment, setFilterSentiment] = useState('all')
   const [filterTopic, setFilterTopic] = useState('all')
@@ -30,6 +34,20 @@ export default function App() {
       setError(err.response?.data?.error || 'Upload failed. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleSuggestReply(text) {
+    setReplyLoading(true)
+    setReplyError(null)
+    setReply(null)
+    try {
+      const response = await axios.post('/api/reply', { text })
+      setReply(response.data.reply)
+    } catch (err) {
+      setReplyError(err.response?.data?.error || 'Failed to suggest reply.')
+    } finally {
+      setReplyLoading(false)
     }
   }
 
@@ -55,8 +73,21 @@ export default function App() {
         </Box>
       )}
       {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+      {stats && stats.total === 0 && stats.failed > 0 && (
+        <Alert severity="warning" sx={{ mt: 2 }}>
+          All reviews failed analysis. Please check your GEMINI_API_KEY in .env and restart the server.
+        </Alert>
+      )}
       {stats && <SummaryCards stats={stats} />}
       {stats && <TopLists stats={stats} />}
+      {stats && (
+        <ReplyBox
+          reply={reply}
+          loading={replyLoading}
+          error={replyError}
+          onClose={() => setReply(null)}
+        />
+      )}
       {stats && (
         <Filters
           products={products}
@@ -66,7 +97,7 @@ export default function App() {
           filterNeedsReply={filterNeedsReply} setFilterNeedsReply={setFilterNeedsReply}
         />
       )}
-      {stats && <ReviewTable rows={filteredRows} />}
+      {stats && <ReviewTable rows={filteredRows} onSuggestReply={handleSuggestReply} />}
     </Container>
   )
 }
