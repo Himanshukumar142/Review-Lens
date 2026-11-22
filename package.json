@@ -1,0 +1,10 @@
+{
+  "name": "reviewlens",
+  "version": "1.0.0",
+  "scripts": {
+    "setup": "npm install --prefix server && npm install --prefix client",
+    "build": "npm run build --prefix client",
+    "start": "node server/server.js",
+    "test": "node --test server/tests/cleaning.test.js server/tests/validator.test.js server/tests/backoff.test.js server/tests/cache.test.js server/tests/analyzer.test.js"
+  }
+}
